@@ -110,7 +110,32 @@ def get_connection():
         user=os.environ["DB_USER"],
         password=os.environ["DB_PASSWORD"],
         sslmode="require",
+        connect_timeout=10,  # fail fast instead of hanging if the database is unreachable
     )
+
+
+def get_container_client(source: str):
+    """Connect to the bucket: managed identity on the VM, connection string locally.
+
+    On the VM, no storage key exists anywhere: DefaultAzureCredential asks the
+    VM's managed identity for a short-lived token instead. The log records which
+    method was used, never the credential itself. The Azure libraries are only
+    imported here, so services that never touch storage do not need them.
+    """
+    from azure.identity import DefaultAzureCredential
+    from azure.storage.blob import BlobServiceClient
+
+    container_name = os.environ["AZURE_STORAGE_CONTAINER"]
+    conn_str = os.environ.get("AZURE_STORAGE_CONNECTION_STRING")
+    if conn_str:
+        service = BlobServiceClient.from_connection_string(conn_str)
+        method = "connection_string"
+    else:
+        service = BlobServiceClient(account_url=os.environ["AZURE_STORAGE_ACCOUNT_URL"],
+                                    credential=DefaultAzureCredential())
+        method = "managed_identity"
+    log_event(logging.INFO, "storage_auth", source=source, method=method)
+    return service.get_container_client(container_name)
 
 
 def run(main, poll_interval: int, health_port: int, get_status) -> int:

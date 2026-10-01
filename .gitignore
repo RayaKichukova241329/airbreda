@@ -4,3 +4,5 @@ data/
 __pycache__/
 .idea/
 explore.ipynb
+.env.*
+!.env.example

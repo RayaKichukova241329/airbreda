@@ -49,12 +49,11 @@ from pathlib import Path
 import pandas as pd
 import psycopg2
 import redis
-from azure.storage.blob import BlobServiceClient
-from azure.identity import DefaultAzureCredential
 from dotenv import load_dotenv
 from psycopg2.extras import execute_values
 
-from common import BadDataCounter, get_connection, log_event, run, setup_logging, utc_now_iso
+from common import (BadDataCounter, get_connection, get_container_client, log_event, run,
+                    setup_logging, utc_now_iso)
 from getTrafficReadings import (
     CONFIG_URL,
     MEASURED_URL,
@@ -192,25 +191,6 @@ def publish_site(row: dict, client: redis.Redis) -> None:
     }
     client.rpush(REDIS_LIST, json.dumps(message))
 
-def get_container_client():
-    """Connect to the bucket: managed identity on the VM, connection string locally.
-
-    On the VM, no storage key exists anywhere. DefaultAzureCredential asks the
-    VM's managed identity for a short-lived token instead.
-    """
-    container_name = os.environ["AZURE_STORAGE_CONTAINER"]
-    conn_str = os.environ.get("AZURE_STORAGE_CONNECTION_STRING")
-    if conn_str:
-        service = BlobServiceClient.from_connection_string(conn_str)
-        method = "connection_string"
-    else:
-        service = BlobServiceClient(
-            account_url=os.environ["AZURE_STORAGE_ACCOUNT_URL"],
-            credential=DefaultAzureCredential(),
-        )
-        method = "managed_identity"
-    log_event(logging.INFO, "storage_auth", source=SOURCE, method=method)
-    return service.get_container_client(container_name)
 
 
 def main() -> int:
@@ -226,7 +206,7 @@ def main() -> int:
         return 1
 
     # 2. Connect to the bucket and, if configured, to Redis
-    container = get_container_client()
+    container = get_container_client(source=SOURCE)
     redis_host = os.environ.get("REDIS_HOST")
     client = redis.Redis(host=redis_host, port=6379) if redis_host else None
 

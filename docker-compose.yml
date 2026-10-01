@@ -1,42 +1,36 @@
+# Local test of the full Day 4 stack: both ingestion services plus the dashboard,
+# all using the real cloud database and bucket through .env (no local database).
+# The VM runs the same three containers with plain `docker run` (see ADR-005).
 services:
-  redis:
-    image: redis:7-alpine
-    container_name: redis
-    networks: [airbreda]
-
   air-ingest:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: air-ingest
     env_file: .env
     environment:
-      REDIS_HOST: redis
       POLL_INTERVAL_SECONDS: "3600"
       HEALTH_PORT: "8001"
       PYTHONUNBUFFERED: "1"
-    ports:
-      - "127.0.0.1:8001:8001"   # /health, reachable from this machine only
-    depends_on: [redis]
-    restart: unless-stopped
-    networks: [airbreda]
 
   traffic-ingest:
     build:
       context: .
       dockerfile: Dockerfile.traffic
-    container_name: traffic-ingest
     env_file: .env
     environment:
-      REDIS_HOST: redis
       POLL_INTERVAL_SECONDS: "3600"
       HEALTH_PORT: "8002"
       PYTHONUNBUFFERED: "1"
-    ports:
-      - "127.0.0.1:8002:8002"   # /health, reachable from this machine only
-    depends_on: [redis]
-    restart: unless-stopped
-    networks: [airbreda]
 
-networks:
-  airbreda:
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    env_file: .env
+    environment:
+      AIR_HEALTH_URL: http://air-ingest:8001/health
+      TRAFFIC_HEALTH_URL: http://traffic-ingest:8002/health
+      PYTHONUNBUFFERED: "1"
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on: [air-ingest, traffic-ingest]

@@ -1,0 +1,18 @@
+FROM python:3.12-slim
+WORKDIR /app
+
+# Exact package versions from uv.lock, including the scikit-learn version that
+# trained model.pkl (a different version can fail to load the model or behave differently)
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# The model is baked into the image: the container always serves the model it was built with
+COPY common.py features.py predict.py dashboard.py model.pkl ./
+
+# The dashboard is reachable from the internet, so it does not run as root
+RUN useradd --create-home --uid 10001 appuser
+USER appuser
+
+EXPOSE 8000
+# Request logs come from the app as JSON, so uvicorn's own plain-text access log is off
+CMD ["uvicorn", "dashboard:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log", "--log-level", "warning"]
