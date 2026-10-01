@@ -6,8 +6,8 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# The model is baked into the image: the container always serves the model it was built with
-COPY common.py features.py predict.py dashboard.py model.pkl ./
+# The model and its metrics are baked into the image: the container always serves the model it was built with
+COPY common.py features.py predict.py dashboard.py model.pkl model_metrics.json ./
 
 # The dashboard is reachable from the internet, so it does not run as root
 RUN useradd --create-home --uid 10001 appuser
