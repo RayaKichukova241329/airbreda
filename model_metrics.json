@@ -1,19 +1,19 @@
 {
-  "trained_at": "2026-10-01T17:16:22+00:00",
-  "rows": 6,
+  "trained_at": "2026-10-02T06:29:14+00:00",
+  "rows": 18,
   "first_hour": "2026-09-30 21:00:00+00:00",
-  "last_hour": "2026-10-01 15:00:00+00:00",
+  "last_hour": "2026-10-02 04:00:00+00:00",
   "features": [
     "total_intensity_veh_per_hr",
     "hour_of_day"
   ],
-  "r2_in_sample": 0.255,
-  "mae_in_sample": 2.04,
-  "mae_leave_one_out": 6.07,
-  "intercept": 15.6307,
+  "r2_in_sample": 0.033,
+  "mae_in_sample": 7.11,
+  "mae_leave_one_out": 8.58,
+  "intercept": 25.8265,
   "coefficients": {
-    "total_intensity_veh_per_hr": 0.000851,
-    "hour_of_day": -0.143474
+    "total_intensity_veh_per_hr": -0.001165,
+    "hour_of_day": 0.146223
   },
   "sklearn_version": "1.9.1"
 }
