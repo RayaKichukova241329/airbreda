@@ -33,7 +33,7 @@ All four sites are real NDW measurement points at the same A27 interchange as Lu
 |---|---|
 | `GET /site/{site_id}` | Latest measured NO₂, the site's latest traffic intensity, and the model's predicted NO₂ and exceedance risk |
 | `GET /health` | Status of both ingestion services: last successful fetch and bad-data count per source |
-| `GET /history?hours=48` | Hourly NO₂ and total traffic for the last hours, used by the timeline on the page |
+| `GET /history?hours=48` | Hourly NO₂, total traffic and the current model's prediction for the last hours, used by the timeline on the page |
 | `GET /model` | What the model was trained on and how accurate it is |
 | `GET /` | The dashboard page |
 
