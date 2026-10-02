@@ -5,8 +5,8 @@ Routes
   GET /site/{site_id}  the latest real NO2, this site's latest traffic and the
                        model's prediction for the current traffic
   GET /health          both ingestion services' health, side by side
-  GET /history         hourly NO2 and total traffic for the last hours (default 48),
-                       for the timeline on the page
+  GET /history         hourly NO2, total traffic and the model's prediction for the
+                       last hours (default 48), for the timeline on the page
   GET /model           what the model was trained on and how accurate it is,
                        read from model_metrics.json (baked in with model.pkl)
   GET /                the human-facing page, built on /site/{site_id} like any
@@ -25,6 +25,10 @@ Where each /site/{site_id} field comes from (required comment):
                         from features.py (the same functions used in training)
   total_intensity_veh_per_hr  the sum of all four sites' latest intensities
   no2_timestamp, no2_is_flagged  the same database row as no2_ug_m3
+
+In /history, no2_ug_m3_predicted applies the CURRENT model to each past hour's
+total traffic and local hour. Most of those hours were used to train it, so
+agreement there is in-sample and does not show how well it predicts new hours.
 
 Why the prediction is the same for all four sites: the model was trained on the
 TOTAL intensity at the interchange against one NO2 station (NL10240). Feeding it
@@ -251,17 +255,26 @@ def build_history(no2_rows, flow_rows, end_hour: pd.Timestamp, hours: int) -> li
         start = start.tz_localize("UTC") if start.tzinfo is None else start.tz_convert("UTC")
         flows.setdefault(start, {})[site_id] = float(mean_flow)
 
-    points = []
+    points, prediction_failed = [], False
     for i in range(hours, -1, -1):
         start = end_hour - pd.Timedelta(hours=i)
         value, flagged = no2.get(start, (None, None))
         sites = flows.get(start, {})
         total = sum(sites.values()) if len(sites) == len(SITES) else None
+        predicted = None
+        if total is not None and not prediction_failed:
+            try:
+                # same features as training: total traffic and the local hour of hour_start
+                predicted = model.predict(total, hour_of_day(start))["no2_ug_m3_predicted"]
+            except Exception as e:
+                prediction_failed = True  # log once, not once per hour
+                log_event(logging.ERROR, "prediction_failed", route="/history", error=str(e))
         points.append({
             "hour_start": iso_utc(start),
             "no2_ug_m3": value,
             "no2_is_flagged": flagged,
             "total_intensity_veh_per_hr": total,
+            "no2_ug_m3_predicted": predicted,
         })
     return points
 
@@ -448,6 +461,7 @@ PAGE = """<!DOCTYPE html>
   .key-no2 { width: 1.4rem; height: 3px; background: var(--ink); }
   .key-traffic { width: 0.8rem; height: 0.8rem; background: var(--road-blue-soft); border: 1px solid var(--road-blue); }
   .key-limit { width: 1.4rem; border-top: 2px dashed var(--high); }
+  .key-pred { width: 1.4rem; border-top: 2.5px dotted var(--road-blue); }
   .summary { color: var(--muted); margin: 0.25rem 0 0.75rem; }
   .chart { position: relative; }
   .chart svg { display: block; width: 100%; height: auto; }
@@ -532,6 +546,7 @@ PAGE = """<!DOCTYPE html>
         <h2 id="timeline-title">The last 48 hours</h2>
         <ul class="legend">
           <li><i class="key-no2"></i>Measured NO₂</li>
+          <li><i class="key-pred"></i>Predicted NO₂ (current model)</li>
           <li><i class="key-traffic"></i>Total traffic</li>
           <li><i class="key-limit"></i>EU limit, 40 µg/m³</li>
         </ul>
@@ -705,8 +720,9 @@ function drawTimeline(points) {
   if (!n) { $("summary").textContent = "No history available yet."; return; }
 
   const no2Values = points.map(p => p.no2_ug_m3).filter(v => v !== null);
+  const predValues = points.map(p => p.no2_ug_m3_predicted).filter(v => v !== null && v !== undefined);
   const traffic = points.map(p => p.total_intensity_veh_per_hr).filter(v => v !== null);
-  const no2Max = Math.max(50, Math.ceil((Math.max(0, ...no2Values) + 5) / 10) * 10);
+  const no2Max = Math.max(50, Math.ceil((Math.max(0, ...no2Values, ...predValues) + 5) / 10) * 10);
   const trafficMax = Math.max(1000, Math.ceil(Math.max(0, ...traffic) / 1000) * 1000);
   const step = (W - L - R) / n;
   const x = i => L + i * step;
@@ -753,6 +769,18 @@ function drawTimeline(points) {
     segment.push(`${x(i) + step / 2},${yNo2(p.no2_ug_m3)}`);
   });
   flush();
+  // predicted NO2 (current model), dotted, broken where traffic is incomplete
+  segment = [];
+  const flushPred = () => {
+    if (segment.length > 1) chart.append(svg("polyline", { points: segment.join(" "), fill: "none", stroke: "#1d4f91", "stroke-width": 2.25, "stroke-dasharray": "2 4", "stroke-linecap": "round" }));
+    else if (segment.length === 1) { const [cx, cy] = segment[0].split(","); chart.append(svg("circle", { cx, cy, r: 2.5, fill: "#1d4f91" })); }
+    segment = [];
+  };
+  points.forEach((p, i) => {
+    if (p.no2_ug_m3_predicted === null || p.no2_ug_m3_predicted === undefined) { flushPred(); return; }
+    segment.push(`${x(i) + step / 2},${yNo2(p.no2_ug_m3_predicted)}`);
+  });
+  flushPred();
   points.forEach((p, i) => {
     if (p.no2_ug_m3 !== null && p.no2_is_flagged)
       chart.append(svg("circle", { cx: x(i) + step / 2, cy: yNo2(p.no2_ug_m3), r: 4, fill: "#fff", stroke: "#a86512", "stroke-width": 2 }));
@@ -772,7 +800,8 @@ function drawTimeline(points) {
   // hover areas: one invisible column per hour, with a tooltip
   points.forEach((p, i) => {
     const area = svg("rect", { x: x(i), y: T, width: step, height: H - T - B, fill: "transparent" });
-    const text = `${dayHour(p.hour_start)}: NO₂ ${p.no2_ug_m3 === null ? "no data" : ug(p.no2_ug_m3)}, traffic ${p.total_intensity_veh_per_hr === null ? "no data" : veh(p.total_intensity_veh_per_hr)}`;
+    const pred = p.no2_ug_m3_predicted === null || p.no2_ug_m3_predicted === undefined ? "n/a" : ug(p.no2_ug_m3_predicted);
+    const text = `${dayHour(p.hour_start)}: NO₂ ${p.no2_ug_m3 === null ? "no data" : ug(p.no2_ug_m3)}, predicted ${pred}, traffic ${p.total_intensity_veh_per_hr === null ? "no data" : veh(p.total_intensity_veh_per_hr)}`;
     area.addEventListener("mouseenter", () => {
       const box = chart.getBoundingClientRect();
       tooltip.textContent = text;
@@ -790,7 +819,8 @@ function drawTimeline(points) {
   const withTraffic = traffic.length;
   $("summary").textContent = no2Values.length
     ? `NO₂ ranged from ${ug(Math.min(...no2Values))} to ${ug(Math.max(...no2Values))}. `
-      + `Traffic is available for ${withTraffic} of ${n} hours, from the moment this system started collecting it.`
+      + `Traffic is available for ${withTraffic} of ${n} hours, from the moment this system started collecting it. `
+      + `The dotted line applies the current model to past hours, most of which it was trained on, so it is not a test of new predictions.`
     : "No measured NO₂ in this period yet.";
 }
 

@@ -89,3 +89,16 @@ def test_model_info_reports_data_volume_and_error(client, monkeypatch, tmp_path)
     assert body["rows"] == 6
     assert body["mae_leave_one_out"] == 6.07
     assert body["no2_change_per_1000_veh_per_hr"] == 0.85
+
+
+def test_history_includes_a_prediction_only_where_traffic_is_complete():
+    import pandas as pd
+
+    end = pd.Timestamp("2026-10-01T16:00:00Z")
+    no2_rows = [(pd.Timestamp("2026-10-01T16:00:00Z"), 18.4, False)]
+    flow_rows = [(pd.Timestamp("2026-10-01T15:00:00"), site, 1000.0) for site in dashboard.SITES]
+
+    points = {p["hour_start"]: p for p in dashboard.build_history(no2_rows, flow_rows, end, 2)}
+
+    assert isinstance(points["2026-10-01T15:00:00Z"]["no2_ug_m3_predicted"], float)
+    assert points["2026-10-01T14:00:00Z"]["no2_ug_m3_predicted"] is None
