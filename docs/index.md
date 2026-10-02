@@ -5,7 +5,7 @@ title: AirBreda Architecture Design Document
 
 # AirBreda: Architecture Design Document
 
-AirBreda investigates whether traffic congestion at the A27 interchange near Breda pushes air pollution nearby above safe levels. The platform ingests two Dutch open data streams, hourly NO₂ averages from Luchtmeetnet station NL10240 (RIVM) and one-minute traffic counts from four NDW measurement sites at the interchange, stores them in Azure, trains a regression model on the collected data and serves predictions through an API and a dashboard. This document records the system as deployed, the decisions behind it and what they cost.
+AirBreda investigates whether traffic congestion at the A27 interchange near Breda pushes air pollution nearby above safe levels. The platform ingests two Dutch open data streams, hourly NO₂ averages from Luchtmeetnet station NL10240 (RIVM) and one-minute traffic counts from four NDW measurement sites at the interchange, stores them in Azure, trains a regression model on the collected data and serves predictions through an API and a dashboard. This document records the system as deployed, the decisions behind it and what they cost. Each ADR gives the date its decision was made; all of them were reviewed and fact-checked on 2 October 2026, when the cost figures were taken from the Azure pricing calculator.
 
 **Live system:** [http://20.215.185.196:8000](http://20.215.185.196:8000)  
 **Repository:** [github.com/RayaKichukova241329/airbreda](https://github.com/RayaKichukova241329/airbreda)

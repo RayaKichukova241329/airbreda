@@ -1,7 +1,7 @@
 # ADR-001: Initial Data Storage Strategy
 
 **Status:** Accepted
-**Date:** 2026-10-01
+**Date:** 2026-09-30
 
 ## Context
 
